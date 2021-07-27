@@ -1,0 +1,10 @@
+token = ""
+id = 
+key = ""
+db = "vote.db"
+shards = 1
+
+[infos]
+
+name = "vote_bot"
+prefix = "~"
