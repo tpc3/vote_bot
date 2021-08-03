@@ -88,17 +88,27 @@ async fn vote(ctx: &Context, msg: &Message) -> CommandResult {
                 });
                 msg_res.reference_message(msg);
                 msg_res.components(|f| {
-                    f.create_action_row(|row| {
-                        for i in 0..args.choices.len() {
-                            row.create_button(|button| {
-                                button.label(&args.choices[i]);
-                                button.style(ButtonStyle::Primary);
-                                button.custom_id(format!("choice_{}", i));
-                                button
-                            });
-                        }
-                        row
-                    });
+                    let mut slice = args.choices.clone();
+                    let mut choices = Vec::new();
+                    while slice.len() > 5 {
+                        let (l, r) = slice.split_at(5);
+                        choices.push(l.to_vec());
+                        slice = r.to_vec();
+                    }
+                    choices.push(slice);
+                    for i in choices {
+                        f.create_action_row(|row| {
+                            for j in i {
+                                row.create_button(|button| {
+                                    button.label(&j);
+                                    button.style(ButtonStyle::Primary);
+                                    button.custom_id(format!("choice_{}", &j));
+                                    button
+                                });
+                            }
+                            row
+                        });
+                    }
                     f.create_action_row(|row| {
                         row.create_button(|button| {
                             button.label("End/Restart");
@@ -242,11 +252,8 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                                 if total_votes != 0 {
                                     ratio = votes.votes[i].len() * 100 / total_votes;
                                 }
-                                value = format!(
-                                    "**{} people(s), {}%**\n",
-                                    votes.votes[i].len(),
-                                    ratio
-                                );
+                                value =
+                                    format!("**{} people(s), {}%**\n", votes.votes[i].len(), ratio);
                             }
                             if !args.anonymous && !args.mask {
                                 value = value + &value_vec[i];
@@ -259,17 +266,22 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                     });
                     edit_msg.components(|f| {
                         f.create_action_row(|row| {
-                            if let Component::ActionRow(org_row) = &org_msg.components[0] {
-                                for i in &org_row.components {
-                                    if let Component::Button(org_button) = i {
-                                        row.create_button(|button| {
-                                            button.label(org_button.label.as_ref().unwrap());
-                                            button.style(org_button.style);
-                                            button
-                                                .custom_id(org_button.custom_id.as_ref().unwrap());
-                                            button.disabled(votes.isended);
-                                            button
-                                        });
+                            let mut c = org_msg.components.clone();
+                            c.remove(c.len() - 1);
+                            for i in c {
+                                if let Component::ActionRow(org_row) = i {
+                                    for j in &org_row.components {
+                                        if let Component::Button(org_button) = j {
+                                            row.create_button(|button| {
+                                                button.label(org_button.label.as_ref().unwrap());
+                                                button.style(org_button.style);
+                                                button.custom_id(
+                                                    org_button.custom_id.as_ref().unwrap(),
+                                                );
+                                                button.disabled(votes.isended);
+                                                button
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -356,6 +368,9 @@ fn parser(msg: &String) -> std::result::Result<Args, String> {
             .with_timezone(&Utc);
     }
     let choices = (&matches.free[1..]).to_vec();
+    if choices.len() > 20 {
+        return Err("Too many choices".to_string());
+    }
     let anonymous = matches.opt_present("a");
     let mask = matches.opt_present("m");
     let max: u8 = matches
