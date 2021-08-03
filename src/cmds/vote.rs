@@ -237,15 +237,15 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                             if args.mask {
                                 value = "-".to_string();
                             } else {
-                                let mut count = 0;
+                                let mut ratio = 0;
                                 let total_votes = votes.votes.iter().map(Vec::len).sum::<usize>();
                                 if total_votes != 0 {
-                                    count = votes.votes[i].len() * 100 / total_votes;
+                                    ratio = votes.votes[i].len() * 100 / total_votes;
                                 }
                                 value = format!(
                                     "**{} people(s), {}%**\n",
                                     votes.votes[i].len(),
-                                    count
+                                    ratio
                                 );
                             }
                             if !args.anonymous && !args.mask {
