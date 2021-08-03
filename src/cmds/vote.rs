@@ -32,6 +32,7 @@ struct Args {
 struct Votes {
     votes: Vec<Vec<VoteDetail>>,
     lastupdate: DateTime<Utc>,
+    isended: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -98,6 +99,15 @@ async fn vote(ctx: &Context, msg: &Message) -> CommandResult {
                         }
                         row
                     });
+                    f.create_action_row(|row| {
+                        row.create_button(|button| {
+                            button.label("End/Restart");
+                            button.style(ButtonStyle::Danger);
+                            button.custom_id("toggle");
+                            button
+                        });
+                        row
+                    });
                     f
                 });
                 msg_res
@@ -118,53 +128,74 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
         .unwrap();
     if let MessageComponent(msg) = interaction.data.as_ref().unwrap() {
         if let Regular(org_msg) = interaction.message.clone().unwrap() {
-            let args = parser(&org_msg.embeds[0].footer.as_ref().unwrap().text).unwrap();
-            let votes: Votes = serde_json::from_str(&utils::decrypt_base64_to_string(
-                &utils::db_get(&org_msg.id.as_u64().to_string())
+            let mut args = parser(&org_msg.embeds[0].footer.as_ref().unwrap().text).unwrap();
+            let mut votes: Votes = serde_json::from_str(&utils::decrypt_base64_to_string(
+                &utils::db_get(&org_msg.id.as_u64().to_string()),
             ))
-            .unwrap_or_else(|_| {
-                let votes = vec![Vec::new(); args.choices.len()];
-                Votes {
-                    votes,
-                    lastupdate: Utc::now(),
-                }
+            .unwrap_or_else(|_| Votes {
+                votes: vec![Vec::new(); args.choices.len()],
+                lastupdate: Utc::now(),
+                isended: false,
             });
-            let result = validator(
-                &args,
-                votes,
-                &msg.custom_id
-                    .to_string()
-                    .replace("choice_", "")
-                    .parse()
-                    .unwrap(),
-                interaction.member.as_ref().unwrap().user.id.as_u64(),
-                &interaction.member.as_ref().unwrap().display_name(),
-            );
-            if let Err(why) = result {
-                interaction
-                    .member
-                    .as_ref()
-                    .unwrap()
-                    .user
-                    .dm(&ctx, |msg| {
-                        msg.embed(|embed| {
-                            embed.title("error");
-                            embed.description(format!("Vote wasn't counted: {}", why.to_string()));
-                            embed.footer(|footer| {
-                                footer.text(Utc::now().to_rfc2822());
-                                footer
+
+            if msg.custom_id.starts_with("choice_") {
+                let result = validator(
+                    &args,
+                    votes,
+                    &msg.custom_id
+                        .to_string()
+                        .replace("choice_", "")
+                        .parse()
+                        .unwrap(),
+                    interaction.member.as_ref().unwrap().user.id.as_u64(),
+                    &interaction.member.as_ref().unwrap().display_name(),
+                );
+                if let Err(why) = result {
+                    interaction
+                        .member
+                        .as_ref()
+                        .unwrap()
+                        .user
+                        .dm(&ctx, |msg| {
+                            msg.embed(|embed| {
+                                embed.title("error");
+                                embed.description(format!(
+                                    "Vote wasn't counted: {}",
+                                    why.to_string()
+                                ));
+                                embed.footer(|footer| {
+                                    footer.text(Utc::now().to_rfc2822());
+                                    footer
+                                });
+                                embed.colour(Colour::RED);
+                                embed
                             });
-                            embed.colour(Colour::RED);
-                            embed
-                        });
-                        msg
-                    })
-                    .await
-                    .unwrap();
-                return;
+                            msg
+                        })
+                        .await
+                        .unwrap();
+                    return;
+                }
+                votes = result.unwrap()
+            } else if msg.custom_id == "toggle" {
+                if *interaction.member.as_ref().unwrap().user.id.as_u64()
+                    == utils::icon_url_to_uid(
+                        &org_msg.embeds[0]
+                            .author
+                            .as_ref()
+                            .unwrap()
+                            .icon_url
+                            .as_ref()
+                            .unwrap(),
+                    )
+                {
+                    votes.isended = !votes.isended;
+                    if votes.isended {
+                        args.mask = false;
+                    }
+                }
             }
 
-            let votes = result.as_ref().unwrap();
             let mut value_vec = Vec::new();
             if !args.anonymous {
                 for i in 0..votes.votes.len() {
@@ -175,11 +206,18 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                     value_vec.push(value);
                 }
             }
-            
-            utils::db_insert(&org_msg.id.as_u64().to_string(), &utils::encrypt_str_to_base64(&serde_json::to_string(&votes).unwrap()));
+
+            utils::db_insert(
+                &org_msg.id.as_u64().to_string(),
+                &utils::encrypt_str_to_base64(&serde_json::to_string(&votes).unwrap()),
+            );
             org_msg
                 .clone()
                 .edit(&ctx.http, |edit_msg| {
+                    edit_msg.content(format!(
+                        "Total vote(s): {}",
+                        votes.votes.iter().map(Vec::len).sum::<usize>()
+                    ));
                     edit_msg.embed(|embed| {
                         embed.author(|author| {
                             author.name(org_msg.embeds[0].author.clone().unwrap().name);
@@ -197,9 +235,15 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                         for i in 0..org_msg.embeds[0].fields.len() {
                             let mut value;
                             if args.mask {
-                                value = (*org_msg.embeds[0].fields[i].value).to_string();
+                                value = "-".to_string();
                             } else {
-                                value = format!("{} people(s)\n", votes.votes[i].len());
+                                value = format!(
+                                    "**{} people(s), {}%**\n",
+                                    votes.votes[i].len(),
+                                    votes.votes[i].len()
+                                        / votes.votes.iter().map(Vec::len).sum::<usize>()
+                                        * 100
+                                );
                             }
                             if !args.anonymous && !args.mask {
                                 value = value + &value_vec[i];
@@ -209,6 +253,35 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                         }
                         embed.colour(Colour::ORANGE);
                         embed
+                    });
+                    edit_msg.components(|f| {
+                        f.create_action_row(|row| {
+                            if let Component::ActionRow(org_row) = &org_msg.components[0] {
+                                for i in &org_row.components {
+                                    if let Component::Button(org_button) = i {
+                                        row.create_button(|button| {
+                                            button.label(org_button.label.as_ref().unwrap());
+                                            button.style(org_button.style);
+                                            button
+                                                .custom_id(org_button.custom_id.as_ref().unwrap());
+                                            button.disabled(votes.isended);
+                                            button
+                                        });
+                                    }
+                                }
+                            }
+                            row
+                        });
+                        f.create_action_row(|row| {
+                            row.create_button(|button| {
+                                button.label("End/Restart");
+                                button.style(ButtonStyle::Danger);
+                                button.custom_id("toggle");
+                                button
+                            });
+                            row
+                        });
+                        f
                     });
                     edit_msg
                 })
@@ -223,10 +296,17 @@ pub fn help() -> String {
 }
 
 pub fn init() -> Options {
-
     for i in utils::db_iter() {
-        let votes: Votes = serde_json::from_str(&utils::decrypt_base64_to_string(&String::from_utf8(i.as_ref().unwrap().1.to_vec()).unwrap())).unwrap();
-        if votes.lastupdate.checked_add_signed(chrono::Duration::days(30)).unwrap() < Utc::now() {
+        let votes: Votes = serde_json::from_str(&utils::decrypt_base64_to_string(
+            &String::from_utf8(i.as_ref().unwrap().1.to_vec()).unwrap(),
+        ))
+        .unwrap();
+        if votes
+            .lastupdate
+            .checked_add_signed(chrono::Duration::days(30))
+            .unwrap()
+            < Utc::now()
+        {
             utils::db_remove(&String::from_utf8(i.as_ref().unwrap().0.to_vec()).unwrap());
         }
     }
@@ -249,7 +329,10 @@ fn parser(msg: &String) -> std::result::Result<Args, String> {
     let matches: Matches;
     let m = OPTIONS.parse(&msg_vec[1..]);
     if m.is_err() {
-        return Err(format!("Request parse error: {}", m.unwrap_err().to_string()));
+        return Err(format!(
+            "Request parse error: {}",
+            m.unwrap_err().to_string()
+        ));
     } else {
         matches = m.unwrap();
     }
