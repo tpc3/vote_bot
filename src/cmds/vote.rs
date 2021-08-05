@@ -35,7 +35,7 @@ struct Votes {
     isended: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct VoteDetail {
     id: u64,
     name: String,
@@ -96,15 +96,17 @@ async fn vote(ctx: &Context, msg: &Message) -> CommandResult {
                         slice = r.to_vec();
                     }
                     choices.push(slice);
+                    let mut count = 0;
                     for i in choices {
                         f.create_action_row(|row| {
                             for j in 0..i.len() {
                                 row.create_button(|button| {
                                     button.label(&i[j]);
                                     button.style(ButtonStyle::Primary);
-                                    button.custom_id(format!("choice_{}", j));
+                                    button.custom_id(format!("choice_{}", count));
                                     button
                                 });
+                                count = count + 1;
                             }
                             row
                         });
@@ -186,7 +188,7 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                         .unwrap();
                     return;
                 }
-                votes = result.unwrap()
+                votes = result.unwrap();
             } else if msg.custom_id == "toggle" {
                 if *interaction.member.as_ref().unwrap().user.id.as_u64()
                     == utils::icon_url_to_uid(
