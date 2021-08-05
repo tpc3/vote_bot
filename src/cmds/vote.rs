@@ -98,11 +98,11 @@ async fn vote(ctx: &Context, msg: &Message) -> CommandResult {
                     choices.push(slice);
                     for i in choices {
                         f.create_action_row(|row| {
-                            for j in i {
+                            for j in 0..i.len() {
                                 row.create_button(|button| {
-                                    button.label(&j);
+                                    button.label(&i[j]);
                                     button.style(ButtonStyle::Primary);
-                                    button.custom_id(format!("choice_{}", &j));
+                                    button.custom_id(format!("choice_{}", j));
                                     button
                                 });
                             }
@@ -265,10 +265,10 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                         embed
                     });
                     edit_msg.components(|f| {
-                        f.create_action_row(|row| {
-                            let mut c = org_msg.components.clone();
-                            c.remove(c.len() - 1);
-                            for i in c {
+                        let mut c = org_msg.components.clone();
+                        c.remove(c.len() - 1);
+                        for i in c {
+                            f.create_action_row(|row| {
                                 if let Component::ActionRow(org_row) = i {
                                     for j in &org_row.components {
                                         if let Component::Button(org_button) = j {
@@ -284,9 +284,10 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                                         }
                                     }
                                 }
-                            }
-                            row
-                        });
+                                row
+                            });
+                        }
+
                         f.create_action_row(|row| {
                             row.create_button(|button| {
                                 button.label("End/Restart");
