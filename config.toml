@@ -1,6 +1,6 @@
 token = ""
 id = 
-key = "magickey"
+key = ""
 db = "vote.db"
 shards = 1
 

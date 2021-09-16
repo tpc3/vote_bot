@@ -1,3 +1,4 @@
 target
 *.db
 README.md
+.gitignore
