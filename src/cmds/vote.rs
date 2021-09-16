@@ -2,17 +2,7 @@ use chrono::{DateTime, Utc};
 use getopts::{Matches, Options};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serenity::{
-    framework::standard::{macros::command, CommandResult},
-    model::{
-        interactions::{
-            InteractionData::MessageComponent, InteractionMessage::Regular, InteractionResponseType,
-        },
-        prelude::*,
-    },
-    prelude::*,
-    utils::Colour,
-};
+use serenity::{framework::standard::{macros::command, CommandResult}, model::{interactions::{InteractionResponseType, message_component::{ActionRowComponent, ButtonStyle, InteractionMessage}}, prelude::*}, prelude::*, utils::Colour};
 
 use crate::cmds::utils;
 
@@ -130,7 +120,9 @@ async fn vote(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
+pub async fn interaction_create(ctx: &Context, i: &Interaction) {
+    if let Interaction::MessageComponent(interaction) = i {
+
     interaction
         .create_interaction_response(&ctx, |res| {
             res.kind(InteractionResponseType::DeferredUpdateMessage);
@@ -138,8 +130,7 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
         })
         .await
         .unwrap();
-    if let MessageComponent(msg) = interaction.data.as_ref().unwrap() {
-        if let Regular(org_msg) = interaction.message.clone().unwrap() {
+        if let InteractionMessage::Regular(org_msg) = &interaction.message {
             let mut args = parser(&org_msg.embeds[0].footer.as_ref().unwrap().text).unwrap();
             let mut votes: Votes = serde_json::from_str(&utils::decrypt_base64_to_string(
                 &utils::db_get(&org_msg.id.as_u64().to_string()),
@@ -150,11 +141,11 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                 isended: false,
             });
 
-            if msg.custom_id.starts_with("choice_") {
+            if interaction.data.custom_id.starts_with("choice_") {
                 let result = validator(
                     &args,
                     votes,
-                    &msg.custom_id
+                    &interaction.data.custom_id
                         .to_string()
                         .replace("choice_", "")
                         .parse()
@@ -189,7 +180,7 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                     return;
                 }
                 votes = result.unwrap();
-            } else if msg.custom_id == "toggle" {
+            } else if interaction.data.custom_id == "toggle" {
                 if *interaction.member.as_ref().unwrap().user.id.as_u64()
                     == utils::icon_url_to_uid(
                         &org_msg.embeds[0]
@@ -269,11 +260,10 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                     edit_msg.components(|f| {
                         let mut c = org_msg.components.clone();
                         c.remove(c.len() - 1);
-                        for i in c {
+                        for org_row in c {
                             f.create_action_row(|row| {
-                                if let Component::ActionRow(org_row) = i {
                                     for j in &org_row.components {
-                                        if let Component::Button(org_button) = j {
+                                        if let ActionRowComponent::Button(org_button) = j {
                                             row.create_button(|button| {
                                                 button.label(org_button.label.as_ref().unwrap());
                                                 button.style(org_button.style);
@@ -285,7 +275,6 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                                             });
                                         }
                                     }
-                                }
                                 row
                             });
                         }
@@ -307,8 +296,8 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
                 .unwrap()
         }
     }
-}
-
+    }
+    
 pub fn help() -> String {
     OPTIONS.usage(&(format!("{}{}", crate::config::CONFIG.infos.prefix, "vote")))
 }

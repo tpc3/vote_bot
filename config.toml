@@ -1,6 +1,6 @@
 token = ""
 id = 
-key = ""
+key = "magickey"
 db = "vote.db"
 shards = 1
 
@@ -8,3 +8,4 @@ shards = 1
 
 name = "vote_bot"
 prefix = "~"
+activity = "~help"

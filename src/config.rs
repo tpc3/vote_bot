@@ -16,6 +16,7 @@ pub struct Config {
 pub struct Infos {
     pub name: String,
     pub prefix: String,
+    pub activity: String,
 }
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| init());

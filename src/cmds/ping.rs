@@ -2,7 +2,10 @@ use crate::cmds::utils;
 use ferris_says::say;
 use serenity::{
     framework::standard::{macros::command, CommandResult},
-    model::{interactions::InteractionResponseType, prelude::*},
+    model::{
+        interactions::{message_component::ButtonStyle, Interaction, InteractionResponseType},
+        prelude::*,
+    },
     prelude::*,
     utils::Colour,
 };
@@ -68,22 +71,24 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
-    if let Err(why) = interaction
-        .create_interaction_response(&ctx, |res| {
-            res.kind(InteractionResponseType::ChannelMessageWithSource);
-            res.interaction_response_data(|msg| {
-                msg.create_embed(|embed| {
-                    embed.title("Pong!");
-                    embed.description("Did you pressed the button...?");
-                    embed.colour(Colour::ORANGE);
-                    embed
+    if let Interaction::MessageComponent(i) = interaction {
+        if let Err(why) = i
+            .create_interaction_response(&ctx, |res| {
+                res.kind(InteractionResponseType::ChannelMessageWithSource);
+                res.interaction_response_data(|msg| {
+                    msg.create_embed(|embed| {
+                        embed.title("Pong!");
+                        embed.description("Did you pressed the button...?");
+                        embed.colour(Colour::ORANGE);
+                        embed
+                    });
+                    msg
                 });
-                msg
-            });
-            res
-        })
-        .await
-    {
-        println!("{}", why);
+                res
+            })
+            .await
+        {
+            println!("{}", why);
+        }
     }
 }
