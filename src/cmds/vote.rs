@@ -28,7 +28,6 @@ struct Votes {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct VoteDetail {
     id: u64,
-    name: String,
     time: DateTime<Utc>,
 }
 
@@ -151,7 +150,6 @@ pub async fn interaction_create(ctx: &Context, i: &Interaction) {
                         .parse()
                         .unwrap(),
                     interaction.member.as_ref().unwrap().user.id.as_u64(),
-                    &interaction.member.as_ref().unwrap().display_name(),
                 );
                 if let Err(why) = result {
                     interaction
@@ -204,7 +202,7 @@ pub async fn interaction_create(ctx: &Context, i: &Interaction) {
                 for i in 0..votes.votes.len() {
                     let mut value = String::new();
                     for j in 0..votes.votes[i].len() {
-                        value = format!("{}{}\n", value, &votes.votes[i][j].name);
+                        value = format!("{}<@{}>\n", value, &votes.votes[i][j].id);
                     }
                     value_vec.push(value);
                 }
@@ -393,7 +391,6 @@ fn validator(
     mut votes: Votes,
     num: &u8,
     id: &u64,
-    name: &String,
 ) -> std::result::Result<Votes, String> {
     //Due
     if args.due < Utc::now() {
@@ -428,8 +425,7 @@ fn validator(
 
     let id = *id;
     let time = Utc::now();
-    let name = name.clone();
-    votes.votes[*num as usize].push(VoteDetail { id, time, name });
+    votes.votes[*num as usize].push(VoteDetail { id, time });
     votes.lastupdate = Utc::now();
     Ok(votes)
 }
