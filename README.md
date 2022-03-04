@@ -21,3 +21,7 @@ vote_bot is in development, feel free to:
 * pushing new futures / bug fixes with pull requests
 
 Please make sure to contact me before doing any big changes to the codebase (or... fork it).
+
+## Known issues
+
+* Bot will do nothing when users who don't set their avater closes vote
