@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use getopts::{Matches, Options};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serenity::{framework::standard::{macros::command, CommandResult}, model::{interactions::{InteractionResponseType, message_component::{ActionRowComponent, ButtonStyle, InteractionMessage}}, prelude::*}, prelude::*, utils::Colour};
+use serenity::{framework::standard::{macros::command, CommandResult}, model::{channel::Message, interactions::{InteractionResponseType, message_component::{ActionRowComponent, ButtonStyle}}, prelude::*}, prelude::*, utils::Colour};
 
 use crate::cmds::utils;
 
@@ -129,7 +129,7 @@ pub async fn interaction_create(ctx: &Context, i: &Interaction) {
         })
         .await
         .unwrap();
-        if let InteractionMessage::Regular(org_msg) = &interaction.message {
+        let org_msg = &interaction.message;
             let mut args = parser(&org_msg.embeds[0].footer.as_ref().unwrap().text).unwrap();
             let mut votes: Votes = serde_json::from_str(&utils::decrypt_base64_to_string(
                 &utils::db_get(&org_msg.id.as_u64().to_string()),
@@ -292,7 +292,6 @@ pub async fn interaction_create(ctx: &Context, i: &Interaction) {
                 })
                 .await
                 .unwrap()
-        }
     }
     }
     

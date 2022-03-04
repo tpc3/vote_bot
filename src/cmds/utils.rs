@@ -14,6 +14,9 @@ pub fn link(title: &String, link: &String) -> String {
 }
 pub fn icon_url_to_uid(url: &String) -> u64 {
     //dirty method, should not use it
+    if url.starts_with("https://cdn.discordapp.com/embed/avatars/") {
+        return 0;
+    }
     let s = url.replace("https://cdn.discordapp.com/avatars", "");
     let re = Regex::new(r"(?<=\/).+?(?=\/)").unwrap();
     re.find(&s).unwrap().unwrap().as_str().parse().unwrap()
