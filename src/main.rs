@@ -14,7 +14,8 @@ use serenity::{
         gateway::Ready,
         interactions::{Interaction, InteractionType},
         prelude::Activity,
-    }, prelude::GatewayIntents,
+    },
+    prelude::GatewayIntents,
 };
 use tracing::info;
 
@@ -53,8 +54,12 @@ async fn main() {
         })
         .group(&GENERAL_GROUP);
 
-    // Login with a bot token from the environment
-    let mut client = Client::builder(&config::CONFIG.token, GatewayIntents::default())
+    let intents = GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
+
+    // Login with a bot token from the config
+    let mut client = Client::builder(&config::CONFIG.token, intents)
         .event_handler(Handler)
         .application_id(config::CONFIG.id)
         .framework(framework)
