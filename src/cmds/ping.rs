@@ -76,7 +76,7 @@ pub async fn interaction_create(ctx: &Context, interaction: &Interaction) {
             .create_interaction_response(&ctx, |res| {
                 res.kind(InteractionResponseType::ChannelMessageWithSource);
                 res.interaction_response_data(|msg| {
-                    msg.create_embed(|embed| {
+                    msg.embed(|embed| {
                         embed.title("Pong!");
                         embed.description("Did you pressed the button...?");
                         embed.colour(Colour::ORANGE);
