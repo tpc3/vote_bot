@@ -1,8 +1,24 @@
+use std::{
+    collections::HashMap,
+};
+
 use chrono::{DateTime, Utc};
 use getopts::{Matches, Options};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serenity::{framework::standard::{macros::command, CommandResult}, model::{channel::Message, interactions::{InteractionResponseType, message_component::{ActionRowComponent, ButtonStyle}}, prelude::*}, prelude::*, utils::Colour};
+use serenity::{
+    framework::standard::{macros::command, CommandResult},
+    model::{
+        channel::Message,
+        interactions::{
+            message_component::{ActionRowComponent, ButtonStyle},
+            InteractionResponseType,
+        },
+        prelude::*,
+    },
+    prelude::*,
+    utils::Colour, futures::future::{abortable, AbortHandle},
+};
 
 use crate::cmds::utils;
 
@@ -32,6 +48,7 @@ struct VoteDetail {
 }
 
 pub static OPTIONS: Lazy<Options> = Lazy::new(|| init());
+pub static EDITING: Lazy<RwLock<HashMap<u64, AbortHandle>>> = Lazy::new(|| RwLock::new(HashMap::new()));
 
 #[command]
 async fn vote(ctx: &Context, msg: &Message) -> CommandResult {
@@ -121,180 +138,180 @@ async fn vote(ctx: &Context, msg: &Message) -> CommandResult {
 
 pub async fn interaction_create(ctx: &Context, i: &Interaction) {
     if let Interaction::MessageComponent(interaction) = i {
-
-    interaction
-        .create_interaction_response(&ctx, |res| {
-            res.kind(InteractionResponseType::DeferredUpdateMessage);
-            res
-        })
-        .await
-        .unwrap();
+        interaction
+            .create_interaction_response(&ctx, |res| {
+                res.kind(InteractionResponseType::DeferredUpdateMessage);
+                res
+            })
+            .await
+            .unwrap();
         let org_msg = &interaction.message;
-            let mut args = parser(&org_msg.embeds[0].footer.as_ref().unwrap().text).unwrap();
-            let mut votes: Votes = serde_json::from_str(&utils::decrypt_base64_to_string(
-                &utils::db_get(&org_msg.id.as_u64().to_string()),
-            ))
-            .unwrap_or_else(|_| Votes {
-                votes: vec![Vec::new(); args.choices.len()],
-                lastupdate: Utc::now(),
-                isended: false,
-            });
+        let mut args = parser(&org_msg.embeds[0].footer.as_ref().unwrap().text).unwrap();
+        let mut votes: Votes = serde_json::from_str(&utils::decrypt_base64_to_string(
+            &utils::db_get(&org_msg.id.as_u64().to_string()),
+        ))
+        .unwrap_or_else(|_| Votes {
+            votes: vec![Vec::new(); args.choices.len()],
+            lastupdate: Utc::now(),
+            isended: false,
+        });
 
-            if interaction.data.custom_id.starts_with("choice_") {
-                let result = validator(
-                    &args,
-                    votes,
-                    &interaction.data.custom_id
-                        .to_string()
-                        .replace("choice_", "")
-                        .parse()
-                        .unwrap(),
-                    interaction.member.as_ref().unwrap().user.id.as_u64(),
-                );
-                if let Err(why) = result {
-                    interaction
-                        .member
+        if interaction.data.custom_id.starts_with("choice_") {
+            let result = validator(
+                &args,
+                votes,
+                &interaction
+                    .data
+                    .custom_id
+                    .to_string()
+                    .replace("choice_", "")
+                    .parse()
+                    .unwrap(),
+                interaction.member.as_ref().unwrap().user.id.as_u64(),
+            );
+            if let Err(why) = result {
+                interaction
+                    .member
+                    .as_ref()
+                    .unwrap()
+                    .user
+                    .dm(&ctx, |msg| {
+                        msg.embed(|embed| {
+                            embed.title("error");
+                            embed.description(format!("Vote wasn't counted: {}", why.to_string()));
+                            embed.footer(|footer| {
+                                footer.text(Utc::now().to_rfc2822());
+                                footer
+                            });
+                            embed.colour(Colour::RED);
+                            embed
+                        });
+                        msg
+                    })
+                    .await
+                    .unwrap();
+                return;
+            }
+            votes = result.unwrap();
+        } else if interaction.data.custom_id == "toggle" {
+            if *interaction.member.as_ref().unwrap().user.id.as_u64()
+                == utils::icon_url_to_uid(
+                    &org_msg.embeds[0]
+                        .author
                         .as_ref()
                         .unwrap()
-                        .user
-                        .dm(&ctx, |msg| {
-                            msg.embed(|embed| {
-                                embed.title("error");
-                                embed.description(format!(
-                                    "Vote wasn't counted: {}",
-                                    why.to_string()
-                                ));
-                                embed.footer(|footer| {
-                                    footer.text(Utc::now().to_rfc2822());
-                                    footer
-                                });
-                                embed.colour(Colour::RED);
-                                embed
-                            });
-                            msg
-                        })
-                        .await
-                        .unwrap();
-                    return;
-                }
-                votes = result.unwrap();
-            } else if interaction.data.custom_id == "toggle" {
-                if *interaction.member.as_ref().unwrap().user.id.as_u64()
-                    == utils::icon_url_to_uid(
-                        &org_msg.embeds[0]
-                            .author
-                            .as_ref()
-                            .unwrap()
-                            .icon_url
-                            .as_ref()
-                            .unwrap(),
-                    )
-                {
-                    votes.isended = !votes.isended;
-                    if votes.isended {
-                        args.mask = false;
-                    }
+                        .icon_url
+                        .as_ref()
+                        .unwrap(),
+                )
+            {
+                votes.isended = !votes.isended;
+                if votes.isended {
+                    args.mask = false;
                 }
             }
+        }
 
-            let mut value_vec = Vec::new();
-            if !args.anonymous {
-                for i in 0..votes.votes.len() {
-                    let mut value = String::new();
-                    for j in 0..votes.votes[i].len() {
-                        value = format!("{}<@{}>\n", value, &votes.votes[i][j].id);
-                    }
-                    value_vec.push(value);
+        let mut value_vec = Vec::new();
+        if !args.anonymous {
+            for i in 0..votes.votes.len() {
+                let mut value = String::new();
+                for j in 0..votes.votes[i].len() {
+                    value = format!("{}<@{}>\n", value, &votes.votes[i][j].id);
                 }
+                value_vec.push(value);
             }
+        }
 
-            utils::db_insert(
-                &org_msg.id.as_u64().to_string(),
-                &utils::encrypt_str_to_base64(&serde_json::to_string(&votes).unwrap()),
-            );
-            org_msg
-                .clone()
-                .edit(&ctx.http, |edit_msg| {
-                    edit_msg.content(format!(
-                        "Total vote(s): {}",
-                        votes.votes.iter().map(Vec::len).sum::<usize>()
-                    ));
-                    edit_msg.embed(|embed| {
-                        embed.author(|author| {
-                            author.name(org_msg.embeds[0].author.clone().unwrap().name);
-                            author.icon_url(
-                                org_msg.embeds[0].author.clone().unwrap().icon_url.unwrap(),
-                            );
-                            author
-                        });
-                        embed.title(org_msg.embeds[0].title.clone().unwrap());
-                        embed.description(org_msg.embeds[0].description.clone().unwrap());
-                        embed.footer(|footer| {
-                            footer.text(org_msg.embeds[0].footer.clone().unwrap().text);
-                            footer
-                        });
-                        for i in 0..org_msg.embeds[0].fields.len() {
-                            let mut value;
-                            if args.mask {
-                                value = "-".to_string();
-                            } else {
-                                let mut ratio = 0;
-                                let total_votes = votes.votes.iter().map(Vec::len).sum::<usize>();
-                                if total_votes != 0 {
-                                    ratio = votes.votes[i].len() * 100 / total_votes;
-                                }
-                                value =
-                                    format!("**{} people(s), {}%**\n", votes.votes[i].len(), ratio);
-                            }
-                            if !args.anonymous && !args.mask {
-                                value = value + &value_vec[i];
-                            }
-
-                            embed.field(&org_msg.embeds[0].fields[i].name, value, true);
-                        }
-                        embed.colour(Colour::ORANGE);
-                        embed
+        utils::db_insert(
+            &org_msg.id.as_u64().to_string(),
+            &utils::encrypt_str_to_base64(&serde_json::to_string(&votes).unwrap()),
+        );
+        if let Some(handle) = EDITING.read().await.get(&*org_msg.id.as_u64()) {
+            handle.abort();
+        }
+        let mut m = org_msg.clone();
+        let edit = m.edit(&ctx.http, |edit_msg| {
+                edit_msg.content(format!(
+                    "Total vote(s): {}",
+                    votes.votes.iter().map(Vec::len).sum::<usize>()
+                ));
+                edit_msg.embed(|embed| {
+                    embed.author(|author| {
+                        author.name(org_msg.embeds[0].author.clone().unwrap().name);
+                        author
+                            .icon_url(org_msg.embeds[0].author.clone().unwrap().icon_url.unwrap());
+                        author
                     });
-                    edit_msg.components(|f| {
-                        let mut c = org_msg.components.clone();
-                        c.remove(c.len() - 1);
-                        for org_row in c {
-                            f.create_action_row(|row| {
-                                    for j in &org_row.components {
-                                        if let ActionRowComponent::Button(org_button) = j {
-                                            row.create_button(|button| {
-                                                button.label(org_button.label.as_ref().unwrap());
-                                                button.style(org_button.style);
-                                                button.custom_id(
-                                                    org_button.custom_id.as_ref().unwrap(),
-                                                );
-                                                button.disabled(votes.isended);
-                                                button
-                                            });
-                                        }
-                                    }
-                                row
-                            });
+                    embed.title(org_msg.embeds[0].title.clone().unwrap());
+                    embed.description(org_msg.embeds[0].description.clone().unwrap());
+                    embed.footer(|footer| {
+                        footer.text(org_msg.embeds[0].footer.clone().unwrap().text);
+                        footer
+                    });
+                    for i in 0..org_msg.embeds[0].fields.len() {
+                        let mut value;
+                        if args.mask {
+                            value = "-".to_string();
+                        } else {
+                            let mut ratio = 0;
+                            let total_votes = votes.votes.iter().map(Vec::len).sum::<usize>();
+                            if total_votes != 0 {
+                                ratio = votes.votes[i].len() * 100 / total_votes;
+                            }
+                            value = format!("**{} people(s), {}%**\n", votes.votes[i].len(), ratio);
+                        }
+                        if !args.anonymous && !args.mask {
+                            value = value + &value_vec[i];
                         }
 
+                        embed.field(&org_msg.embeds[0].fields[i].name, value, true);
+                    }
+                    embed.colour(Colour::ORANGE);
+                    embed
+                });
+                edit_msg.components(|f| {
+                    let mut c = org_msg.components.clone();
+                    c.remove(c.len() - 1);
+                    for org_row in c {
                         f.create_action_row(|row| {
-                            row.create_button(|button| {
-                                button.label("End/Restart");
-                                button.style(ButtonStyle::Danger);
-                                button.custom_id("toggle");
-                                button
-                            });
+                            for j in &org_row.components {
+                                if let ActionRowComponent::Button(org_button) = j {
+                                    row.create_button(|button| {
+                                        button.label(org_button.label.as_ref().unwrap());
+                                        button.style(org_button.style);
+                                        button.custom_id(org_button.custom_id.as_ref().unwrap());
+                                        button.disabled(votes.isended);
+                                        button
+                                    });
+                                }
+                            }
                             row
                         });
-                        f
+                    }
+
+                    f.create_action_row(|row| {
+                        row.create_button(|button| {
+                            button.label("End/Restart");
+                            button.style(ButtonStyle::Danger);
+                            button.custom_id("toggle");
+                            button
+                        });
+                        row
                     });
-                    edit_msg
-                })
-                .await
-                .unwrap()
+                    f
+                });
+                edit_msg
+            });
+            let (fut, handle) = abortable(edit);
+            EDITING.write().await.insert(*org_msg.id.as_u64(), handle);
+            if let Ok(res) = fut.await {
+                res.unwrap();
+            }
+            EDITING.write().await.remove(&*org_msg.id.as_u64());
     }
-    }
-    
+}
+
 pub fn help() -> String {
     OPTIONS.usage(&(format!("{}{}", crate::config::CONFIG.infos.prefix, "vote")))
 }
