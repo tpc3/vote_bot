@@ -41,6 +41,14 @@ impl EventHandler for Handler {
                 }
             }
         }
+
+        // Useful for ratelimit debugging
+        // for (k, v) in ctx.http.ratelimiter.routes().read().await.iter() {
+        //     let r = v.lock().await;
+        //     if r.limit() != i64::MAX {
+        //         println!("{:?}: {}/{}({:?})", k, r.remaining(), r.limit(), r.reset_after().unwrap_or_default());
+        //     }
+        // }
     }
 }
 
