@@ -3,7 +3,7 @@ use ferris_says::say;
 use serenity::{
     framework::standard::{macros::command, CommandResult},
     model::{
-        interactions::{message_component::ButtonStyle, Interaction, InteractionResponseType},
+        application::{component::ButtonStyle, interaction::Interaction, interaction::InteractionResponseType},
         prelude::*,
     },
     prelude::*,

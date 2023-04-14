@@ -12,7 +12,7 @@ use serenity::{
     framework::{standard::macros::group, StandardFramework},
     model::{
         gateway::Ready,
-        interactions::{Interaction, InteractionType},
+        application::interaction::{Interaction, InteractionType},
         prelude::Activity,
     },
     prelude::GatewayIntents,

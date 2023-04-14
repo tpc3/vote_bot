@@ -9,11 +9,10 @@ use serenity::{
     futures::future::{abortable, AbortHandle},
     model::{
         channel::Message,
-        interactions::{
-            message_component::{ActionRowComponent, ButtonStyle},
-            InteractionResponseType,
+        application::{
+            component::{ActionRowComponent, ButtonStyle},
+            interaction::{Interaction, InteractionResponseType},
         },
-        prelude::*,
     },
     prelude::*,
     utils::Colour,
